@@ -8,6 +8,10 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -15,55 +19,67 @@ import android.widget.Button;
 import android.widget.ListView;
 import java.util.Set;
 import java.util.ArrayList;
-import android.widget.Toast;
+
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
-import android.widget.TextView;
-import android.content.Intent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 
 
 public class MainActivity extends Activity {
-	//PowerConnectionReceiver pcr, pcr2;
-	//TextView tv1, tv2;
+
+	private PowerManager.WakeLock wl;
+	//widgets
 	private TextView batteryInfo;
 	Button btnPaired;
 	ListView devicelist;
+	//Bluetooth
 	private BluetoothAdapter myBluetooth = null;
-	private Set pairedDevices;
-    /** Called when the activity is first created. */
+	private Set<BluetoothDevice> pairedDevices;
+	public static String EXTRA_ADDRESS = "device_address";
 
 
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
+
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+
+		PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+		wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "My Tag");
+		wl.acquire();
+		//Calling widgets
 		//batteryInfo=(TextView)findViewById(R.id.textViewBatteryInfo);
 		btnPaired = (Button)findViewById(R.id.button_scan);
 		devicelist = (ListView)findViewById(R.id.listView);
-        this.registerReceiver(this.batteryInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 
+		//if the device has bluetooth
 		myBluetooth = BluetoothAdapter.getDefaultAdapter();
 		if(myBluetooth == null)
 		{
-			//Show a mensag. that thedevice has no bluetooth adapter
+			//Show a mensag. that the device has no bluetooth adapter
 			Toast.makeText(getApplicationContext(), "Bluetooth Device Not Available", Toast.LENGTH_LONG).show();
+
 			//finish apk
 			finish();
 		}
-		else
+		else if(!myBluetooth.isEnabled())
 		{
-			if (myBluetooth.isEnabled())
-			{ }
-			else
-			{
-				//Ask to the user turn the bluetooth on
-				Intent turnBTon = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-				startActivityForResult(turnBTon,1);
-			}
+			//Ask to the user turn the bluetooth on
+			Intent turnBTon = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+			startActivityForResult(turnBTon,1);
 		}
+
+		btnPaired.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v)
+			{
+				pairedDevicesList();
+			}
+		});
+
+
 
 
 		Thread t = new Thread() {
@@ -93,8 +109,6 @@ public class MainActivity extends Activity {
 		t.start();
 	}
 
-
-
 	private void pairedDevicesList()
 	{
 		pairedDevices = myBluetooth.getBondedDevices();
@@ -102,10 +116,10 @@ public class MainActivity extends Activity {
 
 		if (pairedDevices.size()>0)
 		{
-//			for(BluetoothDevice bt : pairedDevices)
-//			{
-//				list.add(bt.getName() + "\n" + bt.getAddress()); //Get the device's name and the address
-//			}
+			for(BluetoothDevice bt : pairedDevices)
+			{
+				list.add(bt.getName() + "\n" + bt.getAddress()); //Get the device's name and the address
+			}
 		}
 		else
 		{
@@ -114,44 +128,59 @@ public class MainActivity extends Activity {
 
 		final ArrayAdapter adapter = new ArrayAdapter(this,android.R.layout.simple_list_item_1, list);
 		devicelist.setAdapter(adapter);
-		//devicelist.setOnItemClickListener(myListClickListener); //Method called when the device from the list is clicked
+		devicelist.setOnItemClickListener(myListClickListener); //Method called when the device from the list is clicked
 
 	}
 
-	private void showText(String msg) {
-		Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-	}
 
-	private BroadcastReceiver batteryInfoReceiver = new BroadcastReceiver() {
+	private AdapterView.OnItemClickListener myListClickListener = new AdapterView.OnItemClickListener()
+	{
+		public void onItemClick (AdapterView<?> av, View v, int arg2, long arg3)
+		{
+			// Get the device MAC address, the last 17 chars in the View
+			String info = ((TextView) v).getText().toString();
+			String address = info.substring(info.length() - 17);
 
+			// Make an intent to start next activity.
+			Intent i = new Intent(MainActivity.this, ledControl.class);
 
-
-		@Override
-		public void onReceive(Context context, Intent intent) {
-
-			int  health= intent.getIntExtra(BatteryManager.EXTRA_HEALTH,0);
-			int  icon_small= intent.getIntExtra(BatteryManager.EXTRA_ICON_SMALL,0);
-			int  level= intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0);
-			int  plugged= intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
-			boolean  present= intent.getExtras().getBoolean(BatteryManager.EXTRA_PRESENT); 
-			int  scale= intent.getIntExtra(BatteryManager.EXTRA_SCALE, 0);
-			int  status= intent.getIntExtra(BatteryManager.EXTRA_STATUS, 0);
-			String  technology= intent.getExtras().getString(BatteryManager.EXTRA_TECHNOLOGY);
-			int  temperature= intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
-			int  voltage= intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0);
-
-//			batteryInfo.setText(
-//					"Health: " + health + "\n" +
-//							"Icon Small :" + icon_small + "\n" +
-//							"Level: " + level + "\n" +
-//							"Plugged: " + plugged + "\n" +
-//							"Present: " + present + "\n" +
-//							"Scale: " + scale + "\n" +
-//							"Status: " + status + "\n" +
-//							"Technology: " + technology + "\n" +
-//							"Temperature: " + temperature + "\n" +
-//							"Voltage: " + voltage + "\n");
-//
+			//Change the activity.
+			i.putExtra(EXTRA_ADDRESS, address); //this will be received at ledControl (class) Activity
+			startActivity(i);
 		}
 	};
+
+
+//	@Override
+//	public boolean onCreateOptionsMenu(Menu menu)
+//	{
+//		// Inflate the menu; this adds items to the action bar if it is present.
+//		getMenuInflater().inflate(R.menu.menu_device_list, menu);
+//		return true;
+//	}
+
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		// Handle action bar item clicks here. The action bar will
+		// automatically handle clicks on the Home/Up button, so long
+		// as you specify a parent activity in AndroidManifest.xml.
+		int id = item.getItemId();
+
+		//noinspection SimplifiableIfStatement
+		if (id == R.id.action_settings) {
+			return true;
+		}
+
+		return super.onOptionsItemSelected(item);
+	}
+
+
+
+	private void showText(String msg) {Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();}
+
+	@Override
+	protected void onDestroy() {
+		super.onDestroy();
+		wl.release();
+	}
 }
