@@ -17,8 +17,7 @@ import java.util.Set;
 import java.util.ArrayList;
 import android.widget.Toast;
 import android.widget.ArrayAdapter;
-import android.widget.AdapterView
-import android.widget.AdapterView.OnClickListener
+import android.widget.AdapterView;
 import android.widget.TextView;
 import android.content.Intent;
 import android.bluetooth.BluetoothAdapter;
@@ -95,13 +94,6 @@ public class MainActivity extends Activity {
 	}
 
 
-	btnPaired.setOnClickListener(new View.OnClickListener() {
-		@Override
-		public void onClick(View v)
-		{
-			pairedDevicesList(); //method that will be called
-		}
-	});
 
 	private void pairedDevicesList()
 	{
@@ -110,10 +102,10 @@ public class MainActivity extends Activity {
 
 		if (pairedDevices.size()>0)
 		{
-			for(BluetoothDevice bt : pairedDevices)
-			{
-				list.add(bt.getName() + "\n" + bt.getAddress()); //Get the device's name and the address
-			}
+//			for(BluetoothDevice bt : pairedDevices)
+//			{
+//				list.add(bt.getName() + "\n" + bt.getAddress()); //Get the device's name and the address
+//			}
 		}
 		else
 		{
@@ -122,7 +114,7 @@ public class MainActivity extends Activity {
 
 		final ArrayAdapter adapter = new ArrayAdapter(this,android.R.layout.simple_list_item_1, list);
 		devicelist.setAdapter(adapter);
-		devicelist.setOnItemClickListener(myListClickListener); //Method called when the device from the list is clicked
+		//devicelist.setOnItemClickListener(myListClickListener); //Method called when the device from the list is clicked
 
 	}
 
