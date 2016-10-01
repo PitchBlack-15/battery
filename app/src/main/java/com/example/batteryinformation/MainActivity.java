@@ -1,12 +1,17 @@
 package com.example.batteryinformation;
 
+import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.ProgressDialog;
+import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.os.AsyncTask;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.view.Menu;
@@ -17,8 +22,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.Button;
 import android.widget.ListView;
+
+import java.io.IOException;
 import java.util.Set;
 import java.util.ArrayList;
+import java.util.UUID;
 
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
@@ -36,6 +44,12 @@ public class MainActivity extends Activity {
 	//Bluetooth
 	private BluetoothAdapter myBluetooth = null;
 	private Set<BluetoothDevice> pairedDevices;
+	String address = null;
+	private ProgressDialog progress;
+	BluetoothSocket btSocket = null;
+	private boolean isBtConnected = false;
+	//SPP UUID. Look for it
+	static final UUID myUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 	public static String EXTRA_ADDRESS = "device_address";
 
 
@@ -73,40 +87,11 @@ public class MainActivity extends Activity {
 
 		btnPaired.setOnClickListener(new View.OnClickListener() {
 			@Override
-			public void onClick(View v)
-			{
+			public void onClick(View v) {
 				pairedDevicesList();
 			}
 		});
 
-
-
-
-		Thread t = new Thread() {
-			@Override
-			public void run() {
-				try {
-					while (!isInterrupted()) {
-						Thread.sleep(5000);
-						runOnUiThread(new Runnable() {
-							@Override
-							public void run() {
-								IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-								Intent batteryStatus = registerReceiver(null, ifilter);
-								if (batteryStatus != null) {
-									int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-									int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-									float batteryPct = level / (float) scale;
-									showText("percent : "+ batteryPct);
-								}
-							}
-						});
-					}
-				} catch (InterruptedException e) {
-				}
-			}
-		};
-		t.start();
 	}
 
 	private void pairedDevicesList()
@@ -139,14 +124,13 @@ public class MainActivity extends Activity {
 		{
 			// Get the device MAC address, the last 17 chars in the View
 			String info = ((TextView) v).getText().toString();
-			String address = info.substring(info.length() - 17);
-
-			// Make an intent to start next activity.
-			Intent i = new Intent(MainActivity.this, ledControl.class);
-
-			//Change the activity.
-			i.putExtra(EXTRA_ADDRESS, address); //this will be received at ledControl (class) Activity
-			startActivity(i);
+			address = info.substring(info.length() - 17);
+			new ConnectBT().execute(); //Call the class to connect
+//			// Make an intent to start next activity.
+//			Intent i = new Intent(MainActivity.this, ledControl.class);
+//			//Change the activity.
+//			i.putExtra(EXTRA_ADDRESS, address); //this will be received at ledControl (class) Activity
+//			startActivity(i);
 		}
 	};
 
@@ -182,5 +166,108 @@ public class MainActivity extends Activity {
 	protected void onDestroy() {
 		super.onDestroy();
 		wl.release();
+		Disconnect();
+	}
+
+
+
+	private class ConnectBT extends AsyncTask<Void, Void, Void>  // UI thread
+	{
+		private boolean ConnectSuccess = true; //if it's here, it's almost connected
+
+		@Override
+		protected void onPreExecute()
+		{
+			progress = ProgressDialog.show(MainActivity.this, "Connecting...", "Please wait!!!");  //show a progress dialog
+		}
+
+
+		@Override
+		protected Void doInBackground(Void... devices) //while the progress dialog is shown, the connection is done in background
+		{
+			try
+			{
+				if (btSocket == null || !isBtConnected)
+				{
+					myBluetooth = BluetoothAdapter.getDefaultAdapter();//get the mobile bluetooth device
+					BluetoothDevice dispositivo = myBluetooth.getRemoteDevice(address);//connects to the device's address and checks if it's available
+					btSocket = dispositivo.createRfcommSocketToServiceRecord(myUUID);
+					BluetoothAdapter.getDefaultAdapter().cancelDiscovery();
+					btSocket.connect();//start connection
+				}
+			}
+			catch (IOException e)
+			{
+				ConnectSuccess = false;//if the try failed, you can check the exception here
+			}
+			return null;
+		}
+		@Override
+		protected void onPostExecute(Void result) //after the doInBackground, it checks if everything went fine
+		{
+			if (!ConnectSuccess)
+			{
+				showText("Connection Failed. Is it a SPP Bluetooth? Try again.");
+				wl.release();
+			}
+			else
+			{
+				showText("Connected.");
+				isBtConnected = true;
+				wl.acquire();
+				Thread t = new Thread() {
+					@Override
+					public void run() {
+						try {
+							while (!isInterrupted()) {
+								Thread.sleep(10000);
+								runOnUiThread(new Runnable() {
+									@Override
+									public void run() {
+										IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+										Intent batteryStatus = registerReceiver(null, ifilter);
+										if (batteryStatus != null) {
+											int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+											int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+											float batteryPct = level / (float) scale;
+											showText("percent : "+ batteryPct);
+											if (btSocket!=null)
+											{
+												showText("Send to BT : "+ batteryPct);
+//												try
+//												{
+//													btSocket.getOutputStream().write(String.valueOf(batteryPct).getBytes());
+//												}
+//												catch (IOException e)
+//												{
+//													showText("Error");
+//												}
+											}
+										}
+									}
+								});
+							}
+						} catch (InterruptedException e) {
+						}
+					}
+				};
+				t.start();
+			}
+			progress.dismiss();
+		}
+	}
+
+
+	private void Disconnect()
+	{
+		if (btSocket!=null) //If the btSocket is busy
+		{
+			try
+			{
+				btSocket.close(); //close connection
+			}
+			catch (IOException e) {
+				showText("Error Disconnection");}
+		}
 	}
 }
